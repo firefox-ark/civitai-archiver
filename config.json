@@ -1,0 +1,14 @@
+{
+    "force_recheck": true,
+    "favorites_only": false,
+    "get_small_files": false,
+    "include_checkpoints": true,
+    "include_lora": false,
+    "include_textual_inversion": false,
+    "include_hypernets": false,
+    "include_aesthetic_grads": false,
+    "include_control_net": false,
+    "include_poses": false,
+    "debug_mode": true,
+    "only_size": false
+}
