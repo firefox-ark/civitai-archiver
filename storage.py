@@ -37,17 +37,9 @@ def saveMemory(memory, config):
     if config.debugMode:
         print("Writing to memory")
 
-    #with open("memory.json", "w") as f:
-    #    json.dump(memory.__dict__, f)
-    #    f.close()
-    #print(memory)
-
-    memory_instance = SimpleNamespace(memory=memory)
-
     with open("memory.json", "w") as f:
-        json.dump(memory_instance.__dict__, f)
+        json.dump(memory,f, cls=nsEncoder, indent=4)
         f.close()
-
 
     memoryObjectIsLocked = False
 
