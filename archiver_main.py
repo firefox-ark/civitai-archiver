@@ -1,87 +1,10 @@
 from hashlib import sha256
 import json
-from datetime import datetime
 from tqdm import tqdm
 from types import SimpleNamespace
 
 import downloader
 import storage
-
-
-def findLatestModel(modelVersions):
-    latestModel = modelVersions[0]
-    # adapt for Z time 
-    latestDate = datetime.fromisoformat(latestModel.createdAt.replace('Z', ''))
-    for modelVersion in modelVersions:
-        creationDate = datetime.fromisoformat(modelVersion.createdAt.replace('Z', ''))
-        version = modelVersion.name
-        if creationDate > latestDate:
-            latestModel = modelVersion
-            latestDate = creationDate
-
-    return latestModel
-
-def findFiles(files):
-    filteredFiles = []
-
-    # compensate for undefined tensor size
-    safeTensor = []
-    safeTensorPruned = []
-    safeTensorFull = []
-    # compensate for undefined tensor size
-    pickleTensor =[]
-    pickleTensorPruned = []
-    pickleTensorFull = []
-
-    # preferably reach a full Safetensor
-    for file in files:
-        if hasattr(file.metadata, "format"):
-            if file.metadata.format == "SafeTensor":
-                if hasattr(file.metadata, "size"):
-                    if file.metadata.size == "full":
-                        safeTensorFull.append(file)
-                    else:
-                        safeTensorPruned.append(file)
-                # if size not provided add anyway
-                else:
-                    safeTensor.append(file)
-
-            elif file.metadata.format == "PickleTensor":
-                if hasattr(file.metadata, "size"):
-                    if file.metadata.size == "full":
-                        pickleTensorFull.append(file)
-                    else:
-                        pickleTensorPruned.append(file)
-                # if size not provided add anyway
-                else:
-                    pickleTensor.append(file)
-            elif file.metadata.format == "Other":
-                filteredFiles.append(file)
-
-        #if no format provided add anyway
-        else:
-            filteredFiles.append(file)
-
-    if len(safeTensorFull) > 0:
-        safeTensor.extend(safeTensorFull)
-    else:
-        safeTensor.extend(safeTensorPruned)
-
-    # SafeTensors found
-    if len(safeTensor) > 0:
-        filteredFiles.extend(safeTensor)
-        return filteredFiles
-    
-    # fallback to PickleTensors
-    if len(pickleTensorFull) > 0:
-        pickleTensor.extend(pickleTensorFull)
-    else:
-        pickleTensor.extend(pickleTensorPruned)
-
-    filteredFiles.extend(pickleTensor)
-
-    return filteredFiles
-
 
 
 def loadConfiguration():
@@ -145,36 +68,14 @@ def main():
 
     allModels = downloader.getModels(config)
 
-
-#    if(config.onlyCalculateSizes):    
-
     size = 0
-    for model in tqdm(allModels, desc="Stats from models", leave=True, position=0, smoothing=0):
-        if len(model.modelVersions)> 0:
-            # only take latest model
-            modelVersion = findLatestModel(model.modelVersions)
+    for model in tqdm(allModels, desc="Archive models", leave=True, position=0, smoothing=0):
+        downloadSize = downloader.downloadModel(config,model)
+        size += downloadSize
 
-            # for Checkpoints filter out "redundant" files to lower space usage
-            if model.type == "Checkpoint":
-                # try to find Safetensor file with PickleTensor as fallback
-                # also include Other Types
-                modelFiles = findFiles(modelVersion.files)
-            else:
-                modelFiles = modelVersion.files
+        archivedModels.items.append(model)
+        storage.saveMemory(archivedModels, config)
 
-            for file in modelFiles:
-                size += file.sizeKB
-                #print(f"File: {file.name}, Type: {file.metadata.format}, Size: {file.sizeKB}")
-
-                #for modelFile in model.modelVersions[0].files:
-                #    if hasattr(modelFile, "primary"):
-                #        if modelFile.primary:
-                #            size += modelFile.sizeKB
-
-            archivedModels.items.append(model)
-            storage.saveMemory(archivedModels, config)
-        else:
-            print(f"Model has NO Versions: {model.id}")
 
     #sizeGB =  size / 1000000
     #sizeTB = sizeGB / 1000

@@ -18,14 +18,14 @@ def loadMemory(config):
         with open("memory.json", "w") as f:
             memory = SimpleNamespace()
             memory.items = []
-            json.dump(memory.__dict__, f)
+            json.dump(memory.__dict__, f, indent=4)
             f.close()
         return memory
     
     with open("memory.json", "r") as f:
         memory = json.load(f, object_hook=lambda d: SimpleNamespace(**d))
         f.close()
-        return memory
+    return memory
 
 def saveMemory(memory, config):
     if config.onlyCalculateSizes:

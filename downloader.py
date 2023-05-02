@@ -1,5 +1,6 @@
 import json
 import time
+from datetime import datetime
 import os
 import requests
 from tqdm import tqdm
@@ -61,7 +62,7 @@ def getModels(config):
     params = {
         "limit": 100,
         "page": 1,
-        "query": "test2",
+        "query": "toonyou",
         "sort":"Newest"  
     }
 
@@ -141,8 +142,8 @@ def downloadFile(config, url, modelType, hash, filename, modelName, filesize, re
     filename = os.path.join(modelType, filename)
 
     for retryN in range(retries):
-        if storage.checkFile(config, filename, hash):
-            return sessionDownloadedBytes, True
+        #if storage.checkFile(config, filename, hash):
+        #    return sessionDownloadedBytes, True
         response = requests.get(url, stream=True, headers=headers)
         if response.status_code == 429:
             print("Rate limited, waiting 30 seconds...")
@@ -161,3 +162,103 @@ def downloadFile(config, url, modelType, hash, filename, modelName, filesize, re
         return sessionDownloadedBytes, False
 
     return sessionDownloadedBytes, True
+
+def findLatestModelVersion(modelVersions):
+    latestModel = modelVersions[0]
+    # adapt for Z time 
+    latestDate = datetime.fromisoformat(latestModel.createdAt.replace('Z', ''))
+    for modelVersion in modelVersions:
+        creationDate = datetime.fromisoformat(modelVersion.createdAt.replace('Z', ''))
+        if creationDate > latestDate:
+            latestModel = modelVersion
+            latestDate = creationDate
+
+    return latestModel
+
+def findFiles(files):
+    filteredFiles = []
+
+    # compensate for undefined tensor size
+    safeTensor = []
+    safeTensorPruned = []
+    safeTensorFull = []
+    # compensate for undefined tensor size
+    pickleTensor =[]
+    pickleTensorPruned = []
+    pickleTensorFull = []
+
+    # preferably reach a full Safetensor
+    for file in files:
+        if hasattr(file.metadata, "format"):
+            if file.metadata.format == "SafeTensor":
+                if hasattr(file.metadata, "size"):
+                    if file.metadata.size == "full":
+                        safeTensorFull.append(file)
+                    else:
+                        safeTensorPruned.append(file)
+                # if size not provided add anyway
+                else:
+                    safeTensor.append(file)
+
+            elif file.metadata.format == "PickleTensor":
+                if hasattr(file.metadata, "size"):
+                    if file.metadata.size == "full":
+                        pickleTensorFull.append(file)
+                    else:
+                        pickleTensorPruned.append(file)
+                # if size not provided add anyway
+                else:
+                    pickleTensor.append(file)
+            elif file.metadata.format == "Other":
+                filteredFiles.append(file)
+
+        #if no format provided add anyway
+        else:
+            filteredFiles.append(file)
+
+    if len(safeTensorFull) > 0:
+        safeTensor.extend(safeTensorFull)
+    else:
+        safeTensor.extend(safeTensorPruned)
+
+    # SafeTensors found
+    if len(safeTensor) > 0:
+        filteredFiles.extend(safeTensor)
+        return filteredFiles
+    
+    # fallback to PickleTensors
+    if len(pickleTensorFull) > 0:
+        pickleTensor.extend(pickleTensorFull)
+    else:
+        pickleTensor.extend(pickleTensorPruned)
+
+    filteredFiles.extend(pickleTensor)
+
+    return filteredFiles
+
+def downloadModel(config,model):
+    size = 0
+    if len(model.modelVersions)> 0:
+        # only take latest model
+        modelVersion = findLatestModelVersion(model.modelVersions)
+         # for Checkpoints filter out "redundant" files to lower space usage
+        if model.type == "Checkpoint":
+            # try to find Safetensor file with PickleTensor as fallback
+            # also include Other Types
+            modelFiles = findFiles(modelVersion.files)
+        # rest are acceptable size, possible optimization in later version
+        else:
+            modelFiles = modelVersion.files
+
+        for file in modelFiles:
+            
+            if(config.onlyCalculateSizes):
+                size += file.sizeKB
+                continue
+                #print(f"File: {file.name}, Type: {file.metadata.format}, Size: {file.sizeKB}")
+            downloadFile(config, file.downloadUrl, file.type, file.hashes.SHA256, file.name, model.name, file.sizeKB)
+            size += file.sizeKB
+    else:
+        print(f"Model has NO Versions: {model.id}")
+    
+    return size
