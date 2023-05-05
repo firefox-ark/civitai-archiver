@@ -28,8 +28,8 @@ def loadMemory(config):
     return memory
 
 def saveMemory(memory, config):
-    if config.onlyCalculateSizes:
-        return
+    #if config.onlyCalculateSizes:
+    #    return
     
     global memoryObjectIsLocked
     memoryObjectIsLocked = True
@@ -49,6 +49,33 @@ def findModelInMemory(config,modelId):
         if model.id == modelId:
             return model
     return None
+
+def isModelInMemory(config,modelId, modelVersionId):
+    # Search for modelId in the list of all models,
+    # if latest version id is the same modelVersionId,
+    #  then the model has already been downloaded
+    storedModels = loadMemory(config)
+    try:
+#        isModelPresent = False
+        for model in storedModels.items:
+            if model.id == modelId and model.latestVersionId == modelVersionId:
+                return True
+        
+    
+    
+
+
+        if modelIdStr in aListOfAllDownloadedModels and ForceRecheck == False:
+            if aListOfAllDownloadedModels[modelIdStr] == model["modelVersions"][0]["id"]:
+                print("Skipping model, already in memory", model["name"])
+                return True
+            print("Update found for model, removing older versions..." + model["name"])
+            deleteOlderVersions(model)
+    except Exception as e:
+        print(e)
+        print(f"Error checking if {modelIdStr} is already in memory, no version data? skipping...")
+        return True
+    return False
 
 def moveFileToFolder(src, dest_folder):
     os.makedirs(dest_folder, exist_ok=True)

@@ -40,13 +40,12 @@ def getTypeFilters(config):
 
 
 def getRequestWithRetry(url, headers, params =[], retries = 4):
-#    session = requests.Session()
 
     for retryN in range(retries):
         r = requests.get(url, params=params, headers=headers)
         if r.status_code == 200:
             return r
-        print(f"Failed to get {url} with status code {r.status_code}, retrying in 5 seconds...")
+        print(f"Failed to get {url} with status code {r.status_code}, [{retryN}] retrying in 5 seconds...")
         print(params)
         time.sleep(5)
     print(f"Giving up on {url} with status code {r.status_code}")
@@ -55,7 +54,7 @@ def getRequestWithRetry(url, headers, params =[], retries = 4):
 
 
 def getModels(config):
-    print(f"Requesting Models")    
+    print("Requesting Models")    
     # "query": "Nothing"
     # "username": "Kavka"
     # "query": "test2",
@@ -80,7 +79,7 @@ def getModels(config):
     models = []
 
     print(f"Requesting Models with params: {params}")
-    modelsRequest = getRequestWithRetry(f"https://civitai.com/api/v1/models",  headers=headers, params=params)
+    modelsRequest = getRequestWithRetry("https://civitai.com/api/v1/models",  headers=headers, params=params)
 
     # coudn't get Model information
     if modelsRequest == None:
@@ -92,6 +91,9 @@ def getModels(config):
 
     if config.debugMode:
         print(f"Model Stats:[metadata: {responseJSON.metadata}]")
+
+    if config.onlyFirstPage:
+        return models
 
     # only one page returned
     if not hasattr(responseJSON.metadata, "nextPage"):
@@ -175,90 +177,82 @@ def findLatestModelVersion(modelVersions):
 
     return latestModel
 
+def filterFilesOtherType(files):
+    filteredFiles = []
+
+    for file in files:
+        # if no format provided, for Other type, add to final list
+        if not hasattr(file.metadata, "format") or file.metadata.format == "Other": 
+            filteredFiles.append(file)
+            
+    return filteredFiles
+
+def filterFilesByType(files, fileType):
+    filteredFiles = []
+    tensorPruned = []
+    tensorFull = []
+    # preferably reach a full Tensor
+    for file in files:
+        # if no format provided, for Other type, add to final list
+        if not hasattr(file.metadata, "format"):
+            if fileType == "Other":
+                filteredFiles.append(file)
+            continue
+
+        if file.metadata.format == fileType:
+            # if no size provided add to safetensor list 
+            if not hasattr(file.metadata, "size"):
+                filteredFiles.append(file)
+                continue
+
+            if file.metadata.size == "full":
+                tensorFull.append(file)
+                continue
+            
+            tensorPruned.append(file)
+
+    if len(tensorFull) > 0:
+        filteredFiles.extend(tensorFull)
+        return filteredFiles
+    
+    filteredFiles.extend(tensorPruned)
+    return filteredFiles
+
 def findFiles(files):
     filteredFiles = []
 
-    # compensate for undefined tensor size
-    safeTensor = []
-    safeTensorPruned = []
-    safeTensorFull = []
-    # compensate for undefined tensor size
-    pickleTensor =[]
-    pickleTensorPruned = []
-    pickleTensorFull = []
+    otherFiles = filterFilesOtherType(files)
+    filteredFiles.extend(otherFiles)
 
-    # preferably reach a full Safetensor
-    for file in files:
-        if hasattr(file.metadata, "format"):
-            if file.metadata.format == "SafeTensor":
-                if hasattr(file.metadata, "size"):
-                    if file.metadata.size == "full":
-                        safeTensorFull.append(file)
-                    else:
-                        safeTensorPruned.append(file)
-                # if size not provided add anyway
-                else:
-                    safeTensor.append(file)
-
-            elif file.metadata.format == "PickleTensor":
-                if hasattr(file.metadata, "size"):
-                    if file.metadata.size == "full":
-                        pickleTensorFull.append(file)
-                    else:
-                        pickleTensorPruned.append(file)
-                # if size not provided add anyway
-                else:
-                    pickleTensor.append(file)
-            elif file.metadata.format == "Other":
-                filteredFiles.append(file)
-
-        #if no format provided add anyway
-        else:
-            filteredFiles.append(file)
-
-    if len(safeTensorFull) > 0:
-        safeTensor.extend(safeTensorFull)
-    else:
-        safeTensor.extend(safeTensorPruned)
+    safeTensor = filterFilesByType(files, "SafeTensor")
 
     # SafeTensors found
     if len(safeTensor) > 0:
         filteredFiles.extend(safeTensor)
         return filteredFiles
     
-    # fallback to PickleTensors
-    if len(pickleTensorFull) > 0:
-        pickleTensor.extend(pickleTensorFull)
-    else:
-        pickleTensor.extend(pickleTensorPruned)
-
+    # fallback to PickleTensor
+    pickleTensor = filterFilesByType(files, "PickleTensor")
     filteredFiles.extend(pickleTensor)
-
     return filteredFiles
 
-def downloadModel(config,model):
+def downloadModelVersion(config,modelVersion,modelType,modelName):
     size = 0
-    if len(model.modelVersions)> 0:
-        # only take latest model
-        modelVersion = findLatestModelVersion(model.modelVersions)
-         # for Checkpoints filter out "redundant" files to lower space usage
-        if model.type == "Checkpoint":
-            # try to find Safetensor file with PickleTensor as fallback
-            # also include Other Types
-            modelFiles = findFiles(modelVersion.files)
-        # rest are acceptable size, possible optimization in later version
-        else:
-            modelFiles = modelVersion.files
-
-        for file in modelFiles:
-            
-            if(config.onlyCalculateSizes):
-                size += file.sizeKB
-                continue
-                #print(f"File: {file.name}, Type: {file.metadata.format}, Size: {file.sizeKB}")
-            downloadFile(config, file.downloadUrl, file.type, file.hashes.SHA256, file.name, model.name, file.sizeKB)
-            size += file.sizeKB
+    # for Checkpoints filter out "redundant" files to lower space usage
+    if modelType == "Checkpoint":
+        # try to find Safetensor file with PickleTensor as fallback
+        # also include Other Types
+        modelFiles = findFiles(modelVersion.files)
+    # rest are acceptable size, possible optimization in later version
     else:
-        print(f"Model has NO Versions: {model.id}")
+        modelFiles = modelVersion.files
+
+    for file in modelFiles:
+        if(config.onlyCalculateSizes):
+            size += file.sizeKB
+            continue
+                #print(f"File: {file.name}, Type: {file.metadata.format}, Size: {file.sizeKB}")
+        downloadFile(config, file.downloadUrl, file.type, file.hashes.SHA256, file.name, modelName, file.sizeKB)
+        size += file.sizeKB
     
-    return size
+    return size, len(modelFiles)
