@@ -74,7 +74,7 @@ def main():
 
     size = 0
     fileCount = 0
-    modelsAlreadyInMemory = 0
+    modelsInMemory = 0
     for model in tqdm(allModels, desc="Archive models", leave=True, position=0, smoothing=0):
         if len(model.modelVersions)> 0:
             # only take latest model
@@ -85,11 +85,11 @@ def main():
             continue
        
         # Check if the model has already been downloaded
-        #modelExists = storage.isModelInMemory(model.id, model)
+        modelExists, isModelLatest = storage.isModelInMemory(model, archivedModels)
         
-        #if(modelExists):
-        #    modelsInMemory += 1
-        #    continue
+        if isModelLatest:
+            modelsInMemory += 1
+            continue
         
         # single thread model download
         # TODO: multi-threading in future version
@@ -97,16 +97,18 @@ def main():
         size += downloadSize
         fileCount += downloadFiles
 
-        archivedModels.items.append(model)
-        storage.saveMemory(archivedModels, config)
+        if modelExists:
+            storage.updateMemory(archivedModels, config, model)
+        else:
+            archivedModels.items.append(model)
+            storage.saveMemory(archivedModels, config)
 
 
     sizeGB = int(size / 1000000)
-    # sizeTB = sizeGB / 1000
 
     border = "=" * 50
     print(f"\n{border}\n")
-#    print(f"Failed hashes: {failedHashes}")
+    print(f"Models already downloaded:  {modelsInMemory}")
     print(f"Total download files:   {fileCount}")
     print(f"Total download size:    {sizeGB}GB")
     print(f"\n{border}\n")

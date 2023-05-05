@@ -57,11 +57,9 @@ def getModels(config):
     print("Requesting Models")    
     # "query": "Nothing"
     # "username": "Kavka"
-    # "query": "test2",
     params = {
         "limit": 100,
         "page": 1,
-        "query": "toonyou",
         "sort":"Newest"  
     }
 
@@ -148,7 +146,7 @@ def downloadFile(config, url, modelType, hash, filename, modelName, filesize, re
         #    return sessionDownloadedBytes, True
         response = requests.get(url, stream=True, headers=headers)
         if response.status_code == 429:
-            print("Rate limited, waiting 30 seconds...")
+            print(f"Rate limited, waiting 30 seconds {retryN}...")
             time.sleep(30)
             continue
 
@@ -157,7 +155,7 @@ def downloadFile(config, url, modelType, hash, filename, modelName, filesize, re
         isDownloadSuccessful, downloadSize = downloadFileChunked(response, filename, totalSizeBytes)
 
         if not isDownloadSuccessful or (totalSizeBytes != 0 and totalSizeBytes != downloadSize):
-            print(f"ERROR, something went wrong with {filename}, retrying...")
+            print(f"ERROR, something went wrong with {filename}, retrying {retryN}...")
             continue
 
         sessionDownloadedBytes += totalSizeBytes

@@ -3,19 +3,21 @@ import os
 from hashlib import sha256
 from types import SimpleNamespace
 
-class nsEncoder(json.JSONEncoder):
+class NsEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, SimpleNamespace):
             return obj.__dict__
-        return super(nsEncoder, self).default(obj)
+        return super(NsEncoder, self).default(obj)
+
+memoryFile = "memory.json"
 
 def loadMemory(config):
     if config.onlyCalculateSizes:
         memory = SimpleNamespace()
         memory.items = []
         return memory
-    if not os.path.exists("memory.json"):
-        with open("memory.json", "w") as f:
+    if not os.path.exists(memoryFile):
+        with open(memoryFile, "w") as f:
             memory = SimpleNamespace()
             memory.items = []
             json.dump(memory.__dict__, f, indent=4)
@@ -28,8 +30,8 @@ def loadMemory(config):
     return memory
 
 def saveMemory(memory, config):
-    #if config.onlyCalculateSizes:
-    #    return
+    if config.onlyCalculateSizes:
+        return
     
     global memoryObjectIsLocked
     memoryObjectIsLocked = True
@@ -37,11 +39,19 @@ def saveMemory(memory, config):
     if config.debugMode:
         print("Writing to memory")
 
-    with open("memory.json", "w") as f:
-        json.dump(memory,f, cls=nsEncoder, indent=4)
+    with open(memoryFile, "w") as f:
+        json.dump(memory,f, cls=NsEncoder, indent=4)
         f.close()
 
     memoryObjectIsLocked = False
+
+def updateMemory(archivedModels, config, model):
+    for i, modelStored in enumerate(archivedModels.items):
+        if model.id == modelStored.id:
+            archivedModels.items[i] = model
+            break
+
+    saveMemory(archivedModels, config)
 
 def findModelInMemory(config,modelId):
     currentModels = loadMemory(config)
@@ -50,32 +60,15 @@ def findModelInMemory(config,modelId):
             return model
     return None
 
-def isModelInMemory(config,modelId, modelVersionId):
-    # Search for modelId in the list of all models,
-    # if latest version id is the same modelVersionId,
-    #  then the model has already been downloaded
-    storedModels = loadMemory(config)
-    try:
-#        isModelPresent = False
-        for model in storedModels.items:
-            if model.id == modelId and model.latestVersionId == modelVersionId:
-                return True
+def isModelInMemory(model, archivedModels):
+    for modelStored in archivedModels.items:
+        if model.id == modelStored.id:
+            if model.latestVersionId == modelStored.latestVersionId:
+                return True, True
+            return True, False
         
-    
-    
+    return False, False
 
-
-        if modelIdStr in aListOfAllDownloadedModels and ForceRecheck == False:
-            if aListOfAllDownloadedModels[modelIdStr] == model["modelVersions"][0]["id"]:
-                print("Skipping model, already in memory", model["name"])
-                return True
-            print("Update found for model, removing older versions..." + model["name"])
-            deleteOlderVersions(model)
-    except Exception as e:
-        print(e)
-        print(f"Error checking if {modelIdStr} is already in memory, no version data? skipping...")
-        return True
-    return False
 
 def moveFileToFolder(src, dest_folder):
     os.makedirs(dest_folder, exist_ok=True)
