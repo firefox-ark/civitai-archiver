@@ -250,7 +250,10 @@ def downloadModelVersion(config,modelVersion,modelType,modelName):
             size += file.sizeKB
             continue
                 #print(f"File: {file.name}, Type: {file.metadata.format}, Size: {file.sizeKB}")
-        downloadFile(config, file.downloadUrl, file.type, file.hashes.SHA256, file.name, modelName, file.sizeKB)
+        fileHash = None
+        if hasattr(file.hashes, "SHA256"):
+            fileHash = file.hashes.SHA256
+        downloadFile(config, file.downloadUrl, file.type, fileHash, file.name, modelName, file.sizeKB)
         size += file.sizeKB
     
     return size, len(modelFiles)
